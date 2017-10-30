@@ -6,15 +6,15 @@ var cron = require('node-cron')
 var tkoalyevents = require('tkoalyevents')
 var R = require('ramda')
 var request = require('request')
-const translations = require('./translations')
+var FoodlistService = require('./services/FoodlistService')
+var translations = require('./translations')
 
 var EVENTS_FILE = 'events.json'
 var GROUPS_FILE = 'groups.json'
 
-const WEATHER_URL = 'https://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20weather.forecast%20where%20woeid%20in%20(select%20woeid%20from%20geo.places(1)%20where%20text%3D%22helsinki%22)%20and%20u=%27c%27&format=json&env=store%3A%2F%2Fdatatables.org%2Falltableswithkeys'
+var WEATHER_URL = 'https://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20weather.forecast%20where%20woeid%20in%20(select%20woeid%20from%20geo.places(1)%20where%20text%3D%22helsinki%22)%20and%20u=%27c%27&format=json&env=store%3A%2F%2Fdatatables.org%2Falltableswithkeys'
 
-const FoodlistService = require('./services/FoodlistService');
-const foodlistService = new FoodlistService();
+var foodlistService = new FoodlistService()
 
 moment.locale('fi')
 
@@ -42,17 +42,17 @@ fs.readFile(EVENTS_FILE, (err, eventsData) => {
   })
 })
 
-function saveEvents(data, cb) {
+function saveEvents (data, cb) {
   fs.writeFile(EVENTS_FILE, JSON.stringify(data), cb)
 }
 
-function eventDifference(data, events) {
+function eventDifference (data, events) {
   var difference = R.difference(data.map(e => e.id), events.map(e => e.id))
   return data.filter(e => difference.includes(e.id))
 }
 
-function pollEvents() {
-  retrieveEvents(function (data) {
+function pollEvents () {
+  tkoalyevents(function (data) {
     saveEvents(data)
     var difference = eventDifference(data, events)
     if (difference && difference.length > 0) {
@@ -62,46 +62,35 @@ function pollEvents() {
   })
 }
 
-function getEventURL(id) {
+function getEventURL (id) {
   return 'http://tko-aly.fi/event/' + id
 }
 
-function makeEventHumanReadable(dateFormat) {
+function makeEventHumanReadable (dateFormat) {
   return function (e) {
     return moment(e.starts).format(dateFormat) + ': [' + e.name.trim() + '](' + getEventURL(e.id) + ')'
   }
 }
 
-function makeRegistHumanReadable(dateFormat) {
+function makeRegistHumanReadable (dateFormat) {
   return function (e) {
     return 'Ilmo aukeaa ' + moment(e.registration_starts).format(dateFormat) + ': [' + e.name.trim() + '](' + getEventURL(e.id) + ')'
   }
 }
 
-function retrieveEvents(cb) {
-  tkoalyevents(cb)
+function listEvents (events, dateFormat, showRegistTimes) {
+  var data = showRegistTimes
+    ? events.map(makeRegistHumanReadable(dateFormat))
+    : events.map(makeEventHumanReadable(dateFormat))
+
+  return data.reduce((initial, event) => initial + event + '\n', '')
 }
 
-function listEvents(events, dateFormat, showRegistTimes) {
-  var data = []
-  if (showRegistTimes) {
-    data = events.map(makeRegistHumanReadable(dateFormat))
-  } else {
-    data = events.map(makeEventHumanReadable(dateFormat))
-  }
-  var res = ''
-  for (var i = 0; i < data.length; i++) {
-    var event = data[i]
-    res += event + '\n'
-  }
-  return res
-}
-
-function todaysEvents() {
+function todaysEvents () {
   var today = moment()
   var eventsToday = events.filter(e => moment(e.starts).isSame(today, 'day'))
   var registsToday = events.filter(e => moment(e.registration_starts).isSame(today, 'day'))
-  
+
   if ((eventsToday && eventsToday.length > 0) || (registsToday && registsToday.length > 0)) {
     var message = '*Tänään:* \n' + listEvents(eventsToday, 'HH:mm') + listEvents(registsToday, 'HH:mm', true)
     for (var j = 0; j < groups.length; j++) {
@@ -113,16 +102,15 @@ function todaysEvents() {
   }
 }
 
-function newEvents(events) {
+function newEvents (events) {
   if (!events) {
     return
   }
-  var res
-  if (events.length > 1) {
-    res = '*Uusia tapahtumia:* \n'
-  } else {
-    res = '*Uusi tapahtuma:* \n'
-  }
+
+  var res = events.length > 1
+    ? '*Uusia tapahtumia:* \n'
+    : '*Uusi tapahtuma:* \n'
+
   res += listEvents(events, 'DD.MM.YYYY HH:mm')
   for (var j = 0; j < groups.length; j++) {
     bot.sendMessage(groups[j], res.trim(), {
@@ -132,82 +120,76 @@ function newEvents(events) {
   }
 }
 
-function todaysFood(id) {
-  this.createFoodList = (str, array, cb) => {
-    var res = str
+function todaysFood () {
+  this.createFoodList = (res, array, cb) => {
     var edullisesti = '*Edullisesti:* \n'
     var makeasti = '*Makeasti:*\n'
     var maukkaasti = '*Maukkaasti:*\n'
     for (var i of array) {
+      var warnings = i.warnings.length !== 0
+        ? `_(${i.warnings.join(', ')})_`
+        : ''
+
+      var foodName = `  -  ${i.name} ${warnings} \n\n`
+
       switch (i.price.name) {
         case 'Edullisesti':
-          // Kaunista...
-          edullisesti += `  -  ${i.name} ${i.warnings.length !== 0 ? '_(' : ''}${i.warnings.join(', ')}${i.warnings.length !== 0 ? ')_' : ''} \n\n`
+          edullisesti += foodName
           break
         case 'Makeasti':
-          makeasti += `  -  ${i.name} ${i.warnings.length !== 0 ? '_(' : ''}${i.warnings.join(', ')}${i.warnings.length !== 0 ? ')_' : ''} \n\n`
+          makeasti += foodName
           break
         case 'Maukkaasti':
-          maukkaasti += `  -  ${i.name} ${i.warnings.length !== 0 ? '_(' : ''}${i.warnings.join(', ')}${i.warnings.length !== 0 ? ')_' : ''} \n\n`
+          maukkaasti += foodName
           break
       }
     }
-    let footer = '\n[Äänestä suosikkia!](https://kumpulafood.herokuapp.com)'
+
+    var footer = '\n[Äänestä suosikkia!](https://kumpulafood.herokuapp.com)'
     cb(res + edullisesti + maukkaasti + makeasti + footer)
   }
 
-  foodlistService.fetchRestaurantFoodlist('exactum', list => {
+  var restaurantCallback = list => {
+    if (!list) {
+      return
+    }
+
     var header = `*Päivän ruoka:* \n\n*UniCafe ${list.restaurantName}:* \n\n`
-    if (!list) return
     if (!list.length) {
       for (var j = 0; j < groups.length; j++) {
         bot.sendMessage(groups[j], header + 'ei ruokaa 😭😭😭'.trim(), {
           parse_mode: 'Markdown'
-        });
+        })
       }
     } else {
       this.createFoodList(header, list, (res) => {
         for (var j = 0; j < groups.length; j++) {
           bot.sendMessage(groups[j], res.trim(), {
             parse_mode: 'Markdown'
-          });
+          })
         }
-      });
+      })
     }
-  })
+  }
 
-
-  foodlistService.fetchRestaurantFoodlist('chemicum', list => {
-    var header = `*Päivän ruoka:* \n\n*UniCafe ${list.restaurantName}:* \n\n`
-    if (!list) return
-    if (!list.length) {
-      for (var j = 0; j < groups.length; j++) {
-        bot.sendMessage(groups[j], header + 'ei ruokaa 😭😭😭'.trim(), {
-          parse_mode: 'Markdown'
-        });
-      }
-    } else {
-      this.createFoodList(header, list, (res) => {
-        for (var j = 0; j < groups.length; j++) {
-          bot.sendMessage(groups[j], res.trim(), {
-            parse_mode: 'Markdown'
-          });
-        }
-      });
-    }
-  })
+  var restaurants = ['exactum', 'chemicum']
+  restaurants.map((restaurantName) =>
+    foodlistService.fetchRestaurantFoodlist(restaurantName, restaurantCallback)
+  )
 }
 
-function weather() {
+function weather () {
   request.get(WEATHER_URL, (err, res, body) => {
     if (err) return
     var obj = JSON.parse(body).query.results.channel
+    var sunrise = moment(obj.astronomy.sunrise, ['h:mm A'])
+    var sunset = moment(obj.astronomy.sunset, ['h:mm A'])
+    var sunStatus = moment().isBefore(sunrise) ? 'nousee' : 'nousi'
+    var condition = translations.conditions[obj.item.condition.code]
+    var conditionEmoji = translations.emoji[obj.item.condition.code]
 
-    let sunrise = moment(obj.astronomy.sunrise, ["h:mm A"])
-    let sunset = moment(obj.astronomy.sunset, ["h:mm A"])
-
-    var resStr = `*Lämpötila on Helsingissä ${obj.item.condition.temp}°C,  ${translations.conditions[obj.item.condition.code]} ${translations.emoji[obj.item.condition.code]} . `
-    resStr += `Aurinko ${moment().isBefore(moment(obj.astronomy.sunrise, ['h:mm A'])) ? 'nousee' : 'nousi'} ${moment(obj.astronomy.sunrise, ["h:mm A"]).format('HH:mm')} ja laskee ${moment(obj.astronomy.sunset, ["h:mm A"]).format('HH:mm')}.*`
+    var resStr = `*Lämpötila on Helsingissä ${obj.item.condition.temp}°C, ${condition} ${conditionEmoji} . `
+    resStr += `Aurinko ${sunStatus} ${sunrise.format('HH:mm')} ja laskee ${sunset.format('HH:mm')}.*`
 
     for (var g of groups) {
       bot.sendMessage(g, resStr.trim(), {
@@ -218,7 +200,7 @@ function weather() {
 }
 
 if (process.argv.indexOf('pfl') > -1) {
-  todaysFood();
+  todaysFood()
 }
 
 cron.schedule('0 0 7 * * *', () => {
