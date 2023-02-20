@@ -163,6 +163,7 @@ resource "aws_lambda_function" "eventbird_lambda" {
   handler       = "index.handler"
   role          = "${aws_iam_role.eventbird_iam_role.arn}"
   runtime       = "nodejs12.x"
+  timeout       = 5
 
   environment {
     variables = {
