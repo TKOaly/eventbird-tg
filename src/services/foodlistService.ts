@@ -5,24 +5,25 @@ import axios from 'axios'
 
 import { FoodList, LunchMenu } from '../types'
 import { restaurants } from '../constants'
+import { MAX_MESSAGE_SIZE } from './telegramService'
 
 type Restaurant = keyof typeof restaurants
 
-export const foodListByRestaurant = async (restaurant: Restaurant): Promise<string> => {
+export const foodListByRestaurant = async (restaurant: Restaurant): Promise<string[]> => {
   const { foodList, restaurantName } = await fetchFoodList(restaurant)
   const header = `*Päivän ruoka:* \n\n*UniCafe ${restaurantName}:* \n\n`
 
   if (!foodList) return
 
   if (!foodList.length) {
-    return `${header} ei ruokaa 😭😭😭`.trim()
+    return [`${header} ei ruokaa 😭😭😭`.trim()]
   }
 
   return R.pipe(
     foodList,
     R.groupBy(({ price }) => price.name),
     createFoodList,
-    list => `${header} ${list}`
+    ([first, ...rest]) => [`${header}${first}`, ...rest]
   )
 }
 
@@ -48,9 +49,18 @@ const createFoodList = (groupedList: Record<string, FoodList[]>) => {
           )}${warnings.length !== 0 ? ')_' : ''}\n`,
         ''
       )
-      return `${prev}${key}\n${joinedValues}\n\n`
+
+      const newMessage = `${key}\n${joinedValues}\n\n`
+      const combined = `${R.last(prev)}${newMessage}`
+
+      if (combined.length > MAX_MESSAGE_SIZE) {
+        return [...prev, newMessage]
+      }
+
+      const [head, last] = R.splitAt(prev, -1)
+      return [...head, `${R.last(last)}${combined}`]
     },
-    ''
+    ['']
   )
 }
 

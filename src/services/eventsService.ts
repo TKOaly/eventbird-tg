@@ -3,10 +3,11 @@ import { format, formatISO, isToday, parseISO, sub } from 'date-fns'
 import fi from 'date-fns/locale/fi'
 import * as R from 'remeda'
 
-import { addNewEvent, fetchPostedEvents } from '../db/eventDb'
+import { setPosted, checkPostedStatus } from '../db/eventDb'
 import { EventObject } from '../types'
+import { MAX_MESSAGE_SIZE } from './telegramService'
 
-export const todaysEvents = async (): Promise<string> => {
+export const todaysEvents = async (): Promise<string[]> => {
   const events = await retrieveEvents()
   const eventsToday = R.filter(events, e => isToday(parseISO(e.starts)))
 
@@ -15,18 +16,19 @@ export const todaysEvents = async (): Promise<string> => {
   )
 
   if (eventsToday?.length > 0 || registrationToday?.length > 0) {
-    return `*Tänään:* \n ${listEvents(eventsToday, 'HH:mm', false)} ${listEvents(
-      registrationToday,
-      'HH:mm',
-      true
-    )}`
+    const [todayFirst, ...todayLast] = listEvents(eventsToday, 'HH:mm', false)
+    return [
+      `*Tänään:* \n ${todayFirst}`,
+      ...todayLast,
+      ...listEvents(registrationToday, 'HH:mm', true),
+    ]
   }
 }
 
-export const pollEvents = async (): Promise<string> => {
+export const pollEvents = async (): Promise<string[]> => {
   const events = await retrieveEvents()
   const filteredEvents = await filterPostedEvents(events)
-  const addedEvents = await R.pipe(filteredEvents, R.map(addNewEvent), promises =>
+  const addedEvents = await R.pipe(filteredEvents, R.map(setPosted), promises =>
     Promise.all(promises)
   )
   return newEvents(addedEvents)
@@ -35,7 +37,8 @@ export const pollEvents = async (): Promise<string> => {
 const retrieveEvents = async () => {
   const { data } = await axios.get<EventObject[]>(
     `https://event-api.tko-aly.fi/api/events?fromDate=${formatISO(
-      sub(Date.now(), { months: 3 })
+      sub(Date.now(), { months: 3 }),
+      { representation: 'date' }
     )}`
   )
 
@@ -48,8 +51,9 @@ const newEvents = (events: EventObject[]) => {
   const eventHeader =
     events.length > 1 ? '*Uusia tapahtumia:* \n' : '*Uusi tapahtuma:* \n'
 
-  const message = eventHeader + listEvents(events, 'dd.MM.yyy HH:mm', false)
-  return message.trim()
+  const [first, ...rest] = listEvents(events, 'dd.MM.yyy HH:mm', false)
+  const messages = [`${eventHeader}${first}`, ...rest]
+  return messages
 }
 
 const listEvents = (
@@ -60,7 +64,20 @@ const listEvents = (
   R.pipe(
     events,
     R.map(formatEvents(dateFormat, showRegistrationTimes)),
-    R.reduce((response, event) => (response += `${event} \n`), '')
+    R.reduce(
+      (response, event) => {
+        const newRow = `${event} \n`
+        const combined = `${R.last(response)}${newRow}`
+
+        if (combined.length >= MAX_MESSAGE_SIZE) {
+          return [...response, newRow]
+        }
+
+        const [head, last] = R.splitAt(response, -1)
+        return [...head, `${R.last(last)}${newRow}`]
+      },
+      ['']
+    )
   )
 
 const formatEvents = (dateFormat: string, showRegistration: boolean) => (
@@ -78,7 +95,8 @@ const formatEvents = (dateFormat: string, showRegistration: boolean) => (
 }
 
 const filterPostedEvents = async (data: EventObject[]) => {
-  const postedEvents = await fetchPostedEvents()
-  const ids = R.map(data, ({ id }) => id)
-  return R.filter(data, ({ id }) => R.difference(ids, postedEvents).includes(id))
+  const isPosted = await checkPostedStatus(data)
+  return R.zip(data, isPosted)
+    .filter(([_, posted]) => !posted)
+    .map(([event, _]) => event)
 }

@@ -1,4 +1,3 @@
-import { migrate } from './db/eventDb'
 import { pollEvents, todaysEvents } from './services/eventsService'
 import { foodListByRestaurant } from './services/foodlistService'
 import { sendMessage } from './services/telegramService'
@@ -8,8 +7,6 @@ const logJobMode = (jobMode: string) => console.log('Job mode is', jobMode)
 
 exports.handler = async ({ jobMode }: { jobMode: JobMode }) => {
   logJobMode(jobMode)
-
-  await migrate()
 
   try {
     switch (jobMode) {
