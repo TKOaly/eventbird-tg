@@ -9,6 +9,5 @@ COPY package.json ./
 RUN yarn
 
 COPY src ./src
-COPY migrations ./migrations
 
 CMD ["yarn", "start"]
