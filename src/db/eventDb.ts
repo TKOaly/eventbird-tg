@@ -11,12 +11,24 @@ type RedisClient = RedisClientType<
 const EVENTS_KEY_PREFIX = 'EVENTBIRD_POST_LOG'
 const EXPIRE_AFTER_EVENT_START_PLUS: Duration = { months: 4 }
 
+const getRedisConfig = () => {
+  if (process.env.REDIS_PASSWORD) {
+    return {
+      password: process.env.REDIS_PASSWORD
+    }
+  }
+
+  if (process.env.REDIS_URL) {
+    return {
+      url: process.env.REDIS_URL
+    }
+  }
+}
+
 export const withConnection = <T extends any[], R>(
   fn: (client: RedisClient, ...args: T) => Promise<R>
 ): ((...args: T) => Promise<R>) => async (...args) => {
-  const connection = await createClient({
-    password: process.env.REDIS_PASSWORD,
-  }).connect()
+  const connection = await createClient(getRedisConfig()).connect()
   return fn(connection, ...args).finally(() => connection.quit())
 }
 
