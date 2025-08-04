@@ -21,7 +21,7 @@ export const todaysEvents = async (): Promise<string[]> => {
       `*Tänään:* \n ${todayFirst}`,
       ...todayLast,
       ...listEvents(registrationToday, 'HH:mm', true),
-    ]
+    ].filter(n => n.length > 0)
   }
 }
 
