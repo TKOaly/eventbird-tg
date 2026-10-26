@@ -162,7 +162,7 @@ resource "aws_lambda_function" "eventbird_lambda" {
   s3_key        = "eventbird-package-${var.github_sha}.zip"
   handler       = "index.handler"
   role          = "${aws_iam_role.eventbird_iam_role.arn}"
-  runtime       = "nodejs12.x"
+  runtime       = "nodejs22.x"
   timeout       = 5
 
   environment {

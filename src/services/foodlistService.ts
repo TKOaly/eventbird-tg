@@ -1,4 +1,4 @@
-import fi from 'date-fns/locale/fi'
+import { fi } from 'date-fns/locale'
 import { format } from 'date-fns'
 import * as R from 'remeda'
 import axios from 'axios'
@@ -23,13 +23,13 @@ export const foodListByRestaurant = async (restaurant: Restaurant): Promise<stri
     foodList,
     R.groupBy(({ price }) => price.name),
     createFoodList,
-    ([first, ...rest]) => [`${header}${first}`, ...rest]
+    ([first, ...rest]) => [`${header}${first}`, ...rest],
   )
 }
 
 const fetchFoodList = async (restaurant: Restaurant) => {
   const { data } = await axios.get<LunchMenu>(
-    'http://messi.hyyravintolat.fi/publicapi/restaurant/' + restaurants[restaurant]
+    'http://messi.hyyravintolat.fi/publicapi/restaurant/' + restaurants[restaurant],
   )
 
   return parseFoodList(data)
@@ -45,9 +45,9 @@ const createFoodList = (groupedList: Record<string, FoodList[]>) => {
         groupedList[key],
         (prev, { name, warnings }) =>
           `${prev}  -  ${name} ${warnings.length !== 0 ? '_(' : ''}${warnings.join(
-            ', '
+            ', ',
           )}${warnings.length !== 0 ? ')_' : ''}\n`,
-        ''
+        '',
       )
 
       const newMessage = `${key}\n${joinedValues}\n\n`
@@ -60,7 +60,7 @@ const createFoodList = (groupedList: Record<string, FoodList[]>) => {
       const [head, last] = R.splitAt(prev, -1)
       return [...head, `${R.last(last)}${combined}`]
     },
-    ['']
+    [''],
   )
 }
 
@@ -84,7 +84,7 @@ const parseFoodList = ({ data, information }: LunchMenu) => {
       nutrition,
       ingredients,
       warnings: meta['1'],
-    }))
+    })),
   )
 
   return {
