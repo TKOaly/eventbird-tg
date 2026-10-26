@@ -1,10 +1,9 @@
-FROM node:20.11-alpine
+FROM node:22.23.4-alpine
 
 WORKDIR /app
-COPY yarn.lock ./
-COPY package.json ./
-RUN yarn
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY src ./src
 
-CMD ["yarn", "start"]
+CMD ["npm", "start"]
